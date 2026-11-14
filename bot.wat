@@ -46,7 +46,8 @@
 ;;   gun_get_fire gun_get_power
 ;; scanner: scanner_last scanner_proximity_range scanner_reach
 ;;   scanner_arc_for_reach scanner_heading scanner_arc scanner_pitch
-;;   scanner_get_heading scanner_get_arc scanner_get_pitch
+;;   scanner_is_on scanner_on scanner_get_heading scanner_get_arc
+;;   scanner_get_pitch scanner_get_on
 ;; sensors: sensors_contacts sensors_nearest sensors_cues sensors_contact
 ;;   sensors_position_of
 ;; tracker: tracker_cue tracker_nearest_bearing_rate tracker_velocity
@@ -163,9 +164,12 @@
   (import "clunkyard" "scanner_heading" (func $cy_scanner_heading (param f64) (result i32)))
   (import "clunkyard" "scanner_arc" (func $cy_scanner_arc (param f64) (result i32)))
   (import "clunkyard" "scanner_pitch" (func $cy_scanner_pitch (param f64) (result i32)))
+  (import "clunkyard" "scanner_is_on" (func $cy_scanner_is_on (param i32) (result i32)))
+  (import "clunkyard" "scanner_on" (func $cy_scanner_on (param f64) (result i32)))
   (import "clunkyard" "scanner_get_heading" (func $cy_scanner_get_heading (param i32) (result i32)))
   (import "clunkyard" "scanner_get_arc" (func $cy_scanner_get_arc (param i32) (result i32)))
   (import "clunkyard" "scanner_get_pitch" (func $cy_scanner_get_pitch (param i32) (result i32)))
+  (import "clunkyard" "scanner_get_on" (func $cy_scanner_get_on (param i32) (result i32)))
   (import "clunkyard" "sensors_contacts_v1" (func $cy_sensors_contacts_v1 (param i32 i32 i32) (result i32)))
   (import "clunkyard" "sensors_contacts_v1" (func $cy_sensors_contacts (param i32 i32 i32) (result i32)))
   (import "clunkyard" "sensors_nearest_v1" (func $cy_sensors_nearest_v1 (param i32) (result i32)))
