@@ -2,8 +2,8 @@
 ;; robot core through the clunkyard.* imports, which the SDK block at the top
 ;; of the module declares. It sweeps a medium scan to find a robot, narrows
 ;; the scan to hold it, leads it with shots whose power suits the range,
-;; fires only when the turret is on target, keeps battery back for driving,
-;; looks again where it last saw one, follows a passive cue when it has
+;; fires only when the turret is on target and its bearing is precise, keeps
+;; battery back for driving, looks again where it last saw one, follows a passive cue when it has
 ;; nothing better and steps out of the storm.
 ;;
 ;; The trade-offs (the imports answer with the numbers the hello set):
@@ -12,6 +12,11 @@
 ;;   battery  shots and driving share it, and it refills slowly
 ;;   turret   it turns at a limited rate; $cy_gun_aim_now is where it points now
 ;;   fuel     every import costs fuel, so read each fact once a turn
+;; Bearing is earned: a scan contact's bearing is off by up to its bearing
+;; error (degrees, a fixed share of the arc), so a wide beam finds a robot and
+;; a narrow one aims at it. This starter takes the simple form of the
+;; technique: it aims at the bearing as sensed and fires when one reading is
+;; precise, with no fitted line. Contacts within 120 units are exact.
 ;; A cue ($cy_tracker_cue) says roughly where a robot is, within its
 ;; bearing error: good for where to look, not where to shoot.
 ;;
@@ -421,6 +426,14 @@
   (global $memory_ticks i32 (i32.const 60))
   ;; How long a dodge lasts: half a second.
   (global $dodge_ticks i32 (i32.const 10))
+  ;; Degrees: the search beam, and the beam of a look.
+  (global $search_arc f64 (f64.const 40))
+  ;; Degrees: the narrowest the beam holds.
+  (global $min_arc f64 (f64.const 6))
+  ;; Ticks between looks around the target, for a nearer robot.
+  (global $look_every i32 (i32.const 40))
+  ;; Units across the line of sight a shot may be off by.
+  (global $precise f64 (f64.const 12))
   (global $dodge_until (mut i32) (i32.const 0)) ;; the tick the dodge ends
   (global $dodges (mut i32) (i32.const 0)) ;; how many dodges so far
   (global $free (mut i32) (i32.const 0)) ;; flying free, robots may be above or below
@@ -440,6 +453,19 @@
     (call $number (call $cy_angles_elevation_to (local.get $from) (local.get $to) (global.get $NUMBER))))
   (func $unit (param $value f64) (result f64)
     (f64.max (f64.const -1) (f64.min (f64.const 1) (local.get $value))))
+
+  ;; The angle, in degrees, of a beam 60 units across at this range: atan by a
+  ;; rational fit, cheaper in fuel than a series.
+  (func $hold_arc (param $range f64) (result f64)
+    (local $x f64) (local $flip i32) (local $angle f64)
+    (local.set $x (f64.div (f64.const 30) (local.get $range)))
+    (local.set $flip (f64.gt (local.get $x) (f64.const 1)))
+    (if (local.get $flip) (then (local.set $x (f64.div (f64.const 1) (local.get $x)))))
+    (local.set $angle (f64.div (local.get $x)
+      (f64.add (f64.const 1) (f64.mul (f64.const 0.28125) (f64.mul (local.get $x) (local.get $x))))))
+    (f64.mul (f64.mul (f64.const 2)
+      (select (f64.sub (f64.const 1.5707963) (local.get $angle)) (local.get $angle) (local.get $flip)))
+      (f64.const 57.29578)))
 
   ;; Drives towards a heading and an elevation, turning harder the smaller gain is.
   (func $steer (param $throttle f64) (param $heading f64) (param $elevation f64) (param $gain f64)
@@ -465,7 +491,7 @@
     (local $heading f64) (local $pitch f64) (local $tick i32)
     (local $range f64) (local $bearing f64) (local $elevation f64) (local $power f64)
     (local $error f64) (local $away f64) (local $drift f64) (local $climb f64)
-    (local $i i32) (local $side f64)
+    (local $i i32) (local $side f64) (local $arc f64) (local $sensed f64)
     (drop (call $cy_me_position (global.get $ME)))
     (local.set $heading (call $number (call $cy_me_heading (global.get $NUMBER))))
     (local.set $pitch (call $number (call $cy_me_pitch (global.get $NUMBER))))
@@ -482,26 +508,40 @@
           (select (f64.const 0.7) (select (f64.const -0.4) (f64.const 0.2) (f64.lt (local.get $range) (f64.const 200)))
             (f64.gt (local.get $range) (f64.const 350)))
           (local.get $bearing) (local.get $elevation) (f64.const 45) (local.get $heading) (local.get $pitch))
-        (call $scan (local.get $bearing) (f64.const 20) (local.get $elevation)) ;; narrow: holds it, reaching about 735
+        ;; Halve the beam each tick until it is 60 units across at the target:
+        ;; narrow enough for a precise bearing, wide enough to keep it in.
+        ;; Every 40 ticks widen it for a tick, so a nearer robot can be found.
+        (local.set $sensed (call $field (global.get $TARGET) (global.get $CY_CONTACT_BEARING_ERROR)))
+        (drop (call $cy_scanner_last (global.get $SCAN)))
+        (local.set $arc
+          (select (global.get $search_arc)
+            (f64.max (f64.max (global.get $min_arc) (call $hold_arc (local.get $range)))
+              (f64.min (global.get $search_arc) (f64.div (call $field (global.get $SCAN) (global.get $CY_SCAN_ARC)) (f64.const 2))))
+            (i32.eqz (i32.rem_s (local.get $tick) (global.get $look_every)))))
+        (call $scan (local.get $bearing) (local.get $arc) (local.get $elevation))
         ;; The heaviest shot that still covers the range in about a second,
         ;; aimed where the target will be, lobbed under gravity; straight at
-        ;; it when no shot reaches it. The lead is the intercept if the
-        ;; target holds its course.
+        ;; it when no shot reaches it. An exact contact: the lead is the
+        ;; intercept if the target holds its course. A noisy one is aimed at
+        ;; as sensed, never led.
         (f64.store (global.get $NUMBER) (f64.const 1))
         (local.set $power (call $number (call $cy_gun_power_for_flight_time (local.get $range) (f64.const 1) (global.get $NUMBER))))
-        (if (i32.eq (call $cy_gun_lead (global.get $TARGET) (local.get $power) (global.get $AIM)) (global.get $CY_OK))
-          (then
-            (local.set $bearing (call $field (global.get $AIM) (global.get $CY_SOLUTION_HEADING)))
-            (local.set $elevation (call $field (global.get $AIM) (global.get $CY_SOLUTION_PITCH)))))
+        (if (f64.eq (local.get $sensed) (f64.const 0))
+          (then (if (i32.eq (call $cy_gun_lead (global.get $TARGET) (local.get $power) (global.get $AIM)) (global.get $CY_OK))
+            (then
+              (local.set $bearing (call $field (global.get $AIM) (global.get $CY_SOLUTION_HEADING)))
+              (local.set $elevation (call $field (global.get $AIM) (global.get $CY_SOLUTION_PITCH)))))))
         (drop (call $cy_gun_aim_heading (local.get $bearing)))
         (drop (call $cy_gun_aim_pitch (local.get $elevation)))
         (drop (call $cy_gun_aim_now (global.get $NOW)))
-        ;; Fire once the turret is on target and the battery covers the shot
-        ;; with 10 to spare.
-        (if (i32.and (i32.and
+        ;; Fire once the turret is on target, one reading is precise (its
+        ;; bearing error across the line of sight under 12 units) and the
+        ;; battery covers the shot with 10 to spare.
+        (if (i32.and (f64.lt (f64.div (f64.mul (local.get $range) (local.get $sensed)) (f64.const 57.3)) (global.get $precise))
+            (i32.and (i32.and
               (f64.lt (f64.abs (call $angle_diff (local.get $bearing) (call $field (global.get $NOW) (global.get $CY_DIRECTION_HEADING)))) (f64.const 3))
               (f64.lt (f64.abs (f64.sub (local.get $elevation) (call $field (global.get $NOW) (global.get $CY_DIRECTION_PITCH)))) (f64.const 3)))
-              (i32.eq (call $whole (call $cy_gun_can_fire (local.get $power) (f64.const 10) (global.get $WHOLE))) (i32.const 1)))
+              (i32.eq (call $whole (call $cy_gun_can_fire (local.get $power) (f64.const 10) (global.get $WHOLE))) (i32.const 1))))
           (then
             (drop (call $cy_gun_fire))
             (drop (call $cy_gun_power (local.get $power))))))
