@@ -30,6 +30,7 @@
 ;; arena: arena_size arena_gravity arena_terrain_kind arena_ground_height
 ;; me: me_health me_position me_velocity me_heading me_pitch me_roll
 ;;   me_angular_velocity me_attitude me_grounded me_altitude me_applied
+;;   me_hull_mounts me_to_mount me_from_mount me_mount_toward
 ;; battery: battery_charge battery_capacity battery_regen
 ;;   battery_sustainable_drive battery_compute battery_drive_cost
 ;; drive: drive_hover_lift drive_throttle drive_turn drive_pitch_turn
@@ -58,7 +59,8 @@
 ;;   nav_pickups nav_nearest_pickup nav_field_distance
 ;; score: score_me score_best score_armour
 ;; angles: angles_normalize angles_angle_diff angles_bearing_to
-;;   angles_elevation_to angles_direction angles_distance angles_clamp
+;;   angles_elevation_to angles_direction angles_distance angles_to_chassis
+;;   angles_from_chassis angles_clamp
 ;; status: status_text status_value status_get_text status_get_value
 ;; raw: raw_number raw_text raw_has raw_flag raw_count raw_line raw_extra
 ;; session: session_log
@@ -104,6 +106,10 @@
   (import "clunkyard" "me_altitude" (func $cy_me_altitude (param i32) (result i32)))
   (import "clunkyard" "me_applied_v1" (func $cy_me_applied_v1 (param i32) (result i32)))
   (import "clunkyard" "me_applied_v1" (func $cy_me_applied (param i32) (result i32)))
+  (import "clunkyard" "me_hull_mounts" (func $cy_me_hull_mounts (param i32) (result i32)))
+  (import "clunkyard" "me_to_mount" (func $cy_me_to_mount (param f64 f64 i32) (result i32)))
+  (import "clunkyard" "me_from_mount" (func $cy_me_from_mount (param f64 f64 i32) (result i32)))
+  (import "clunkyard" "me_mount_toward" (func $cy_me_mount_toward (param i32 i32) (result i32)))
   (import "clunkyard" "battery_charge" (func $cy_battery_charge (param i32) (result i32)))
   (import "clunkyard" "battery_capacity" (func $cy_battery_capacity (param i32) (result i32)))
   (import "clunkyard" "battery_regen" (func $cy_battery_regen (param i32) (result i32)))
@@ -218,6 +224,10 @@
   (import "clunkyard" "angles_elevation_to" (func $cy_angles_elevation_to (param i32 i32 i32) (result i32)))
   (import "clunkyard" "angles_direction" (func $cy_angles_direction (param f64 f64 i32) (result i32)))
   (import "clunkyard" "angles_distance" (func $cy_angles_distance (param i32 i32 i32) (result i32)))
+  (import "clunkyard" "angles_to_chassis_v1" (func $cy_angles_to_chassis_v1 (param f64 f64 i32 i32) (result i32)))
+  (import "clunkyard" "angles_to_chassis_v1" (func $cy_angles_to_chassis (param f64 f64 i32 i32) (result i32)))
+  (import "clunkyard" "angles_from_chassis_v1" (func $cy_angles_from_chassis_v1 (param f64 f64 i32 i32) (result i32)))
+  (import "clunkyard" "angles_from_chassis_v1" (func $cy_angles_from_chassis (param f64 f64 i32 i32) (result i32)))
   (import "clunkyard" "angles_clamp" (func $cy_angles_clamp (param f64 f64 f64 i32) (result i32)))
   (import "clunkyard" "status_text" (func $cy_status_text (param i32 i32) (result i32)))
   (import "clunkyard" "status_value" (func $cy_status_value (param f64) (result i32)))
@@ -403,12 +413,18 @@
   (global $SCAN i32 (i32.const 280))
   (global $STORM i32 (i32.const 312))
   (global $ZONE i32 (i32.const 384))
+  (global $CUES i32 (i32.const 432)) ;; room for 8 contacts
 
   ;; Enough to turn against the brake in the force rulesets.
   (global $search_turn f64 (f64.const 0.33))
   ;; How long to look again where a robot was last seen.
   (global $memory_ticks i32 (i32.const 60))
+  ;; How long a dodge lasts: half a second.
+  (global $dodge_ticks i32 (i32.const 10))
+  (global $dodge_until (mut i32) (i32.const 0)) ;; the tick the dodge ends
+  (global $dodges (mut i32) (i32.const 0)) ;; how many dodges so far
   (global $free (mut i32) (i32.const 0)) ;; flying free, robots may be above or below
+  (global $forces (mut i32) (i32.const 0)) ;; the force rulesets: push the hull, not steer it
   (global $last_slot (mut i32) (i32.const 0)) ;; the robot seen most recently, 0 for none yet
 
   ;; The number or whole number an import just wrote; ok is its status.
@@ -442,12 +458,14 @@
     (drop (call $cy_arena_gravity (global.get $GRAVITY)))
     (global.set $free (i32.and (i32.eq (call $whole (call $cy_match_is_3d (global.get $WHOLE))) (i32.const 1))
       (f64.eq (call $field (global.get $GRAVITY) (global.get $CY_VEC3_Z)) (f64.const 0))))
+    (global.set $forces (i32.eq (call $whole (call $cy_match_control (global.get $WHOLE))) (global.get $CY_CONTROL_FORCES)))
     (i32.const 0))
 
   (func (export "clunkyard_turn") (result i32)
     (local $heading f64) (local $pitch f64) (local $tick i32)
     (local $range f64) (local $bearing f64) (local $elevation f64) (local $power f64)
     (local $error f64) (local $away f64) (local $drift f64) (local $climb f64)
+    (local $i i32) (local $side f64)
     (drop (call $cy_me_position (global.get $ME)))
     (local.set $heading (call $number (call $cy_me_heading (global.get $NUMBER))))
     (local.set $pitch (call $number (call $cy_me_pitch (global.get $NUMBER))))
@@ -467,7 +485,8 @@
         (call $scan (local.get $bearing) (f64.const 20) (local.get $elevation)) ;; narrow: holds it, reaching about 735
         ;; The heaviest shot that still covers the range in about a second,
         ;; aimed where the target will be, lobbed under gravity; straight at
-        ;; it when no shot reaches it.
+        ;; it when no shot reaches it. The lead is the intercept if the
+        ;; target holds its course.
         (f64.store (global.get $NUMBER) (f64.const 1))
         (local.set $power (call $number (call $cy_gun_power_for_flight_time (local.get $range) (f64.const 1) (global.get $NUMBER))))
         (if (i32.eq (call $cy_gun_lead (global.get $TARGET) (local.get $power) (global.get $AIM)) (global.get $CY_OK))
@@ -518,6 +537,36 @@
         (call $scan (f64.add (call $field (global.get $SCAN) (global.get $CY_SCAN_HEADING)) (f64.const 36)) (f64.const 40)
           (select (f64.mul (f64.convert_i32_s (i32.sub (i32.rem_s (i32.div_s (local.get $tick) (i32.const 10)) (i32.const 3)) (i32.const 1))) (f64.const 35))
             (f64.const 0) (global.get $free)))))))))
+
+    ;; A simple dodge: vary it, or predict the shooter. A muzzle cue means a
+    ;; robot fired; for half a second swerve off the line of fire, left and
+    ;; right in turn. More cues than the array holds ($CY_SHORT) count as
+    ;; none heard.
+    (if (i32.ge_s (local.get $tick) (global.get $dodge_until))
+      (then (if (i32.eq (call $cy_sensors_cues (global.get $CUES) (i32.const 8) (global.get $WHOLE)) (global.get $CY_OK))
+        (then
+          (block $heard
+            (loop $next
+              (br_if $heard (i32.ge_u (local.get $i) (i32.load (global.get $WHOLE))))
+              (if (i32.eq (i32.load (i32.add (i32.add (global.get $CUES) (i32.mul (local.get $i) (global.get $CY_CONTACT_SIZE)))
+                    (global.get $CY_CONTACT_SOURCE))) (global.get $CY_SOURCE_MUZZLE))
+                (then
+                  (global.set $dodge_until (i32.add (local.get $tick) (global.get $dodge_ticks)))
+                  (global.set $dodges (i32.add (global.get $dodges) (i32.const 1)))
+                  (br $heard)))
+              (local.set $i (i32.add (local.get $i) (i32.const 1)))
+              (br $next)))))))
+    (if (i32.lt_s (local.get $tick) (global.get $dodge_until))
+      (then
+        ;; Left on odd dodges: turn is positive left, strafe positive right.
+        (local.set $side (select (f64.const 1) (f64.const -1) (i32.and (global.get $dodges) (i32.const 1))))
+        (if (global.get $forces)
+          (then
+            (drop (call $cy_drive_throttle (f64.const 0.5)))
+            (drop (call $cy_drive_strafe (f64.neg (local.get $side)))))
+          (else
+            (drop (call $cy_drive_throttle (f64.const 1)))
+            (drop (call $cy_drive_turn (local.get $side)))))))
 
     ;; Low battery: drive gently so the shots can still be paid for.
     (if (f64.lt (call $number (call $cy_battery_charge (global.get $NUMBER)))
