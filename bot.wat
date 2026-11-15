@@ -51,7 +51,7 @@
 ;; sensors: sensors_contacts sensors_nearest sensors_cues sensors_contact
 ;;   sensors_position_of
 ;; tracker: tracker_cue tracker_nearest_bearing_rate tracker_velocity
-;;   tracker_position tracker_last_seen tracker_configure
+;;   tracker_position tracker_history tracker_last_seen tracker_configure
 ;; nav: nav_zone nav_zone_margin nav_zone_contains nav_zone_distance_from
 ;;   nav_storm nav_storm_margin nav_storm_contains nav_storm_distance_from
 ;;   nav_hill nav_hill_margin nav_hill_contains nav_hill_distance_from
@@ -185,6 +185,8 @@
   (import "clunkyard" "tracker_nearest_bearing_rate" (func $cy_tracker_nearest_bearing_rate (param i32) (result i32)))
   (import "clunkyard" "tracker_velocity" (func $cy_tracker_velocity (param i32 i32) (result i32)))
   (import "clunkyard" "tracker_position" (func $cy_tracker_position (param i32 i32) (result i32)))
+  (import "clunkyard" "tracker_history_v1" (func $cy_tracker_history_v1 (param i32 i32 i32 i32) (result i32)))
+  (import "clunkyard" "tracker_history_v1" (func $cy_tracker_history (param i32 i32 i32 i32) (result i32)))
   (import "clunkyard" "tracker_last_seen" (func $cy_tracker_last_seen (param i32 i32) (result i32)))
   (import "clunkyard" "tracker_configure" (func $cy_tracker_configure (param f64 i32 i32) (result i32)))
   (import "clunkyard" "nav_zone_v1" (func $cy_nav_zone_v1 (param i32) (result i32)))
@@ -330,6 +332,14 @@
   (global $CY_CUE_POSITION_X i32 (i32.const 16))
   (global $CY_CUE_POSITION_Y i32 (i32.const 24))
   (global $CY_CUE_POSITION_Z i32 (i32.const 32))
+  (global $CY_SIGHTING_SIZE i32 (i32.const 48))
+  (global $CY_SIGHTING_TICK i32 (i32.const 0))
+  (global $CY_SIGHTING_SOURCE i32 (i32.const 4))
+  (global $CY_SIGHTING_BEARING_ERROR i32 (i32.const 8))
+  (global $CY_SIGHTING_RANGE_ERROR i32 (i32.const 16))
+  (global $CY_SIGHTING_POSITION_X i32 (i32.const 24))
+  (global $CY_SIGHTING_POSITION_Y i32 (i32.const 32))
+  (global $CY_SIGHTING_POSITION_Z i32 (i32.const 40))
   (global $CY_SOLUTION_SIZE i32 (i32.const 24))
   (global $CY_SOLUTION_HEADING i32 (i32.const 0))
   (global $CY_SOLUTION_PITCH i32 (i32.const 8))
