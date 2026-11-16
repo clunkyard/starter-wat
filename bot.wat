@@ -67,6 +67,7 @@
 ;;   angles_elevation_to angles_direction angles_distance angles_to_chassis
 ;;   angles_from_chassis angles_clamp
 ;; status: status_text status_value status_get_text status_get_value
+;; debug: debug_log
 ;; raw: raw_number raw_text raw_has raw_flag raw_count raw_line raw_extra
 ;; session: session_log
 ;; Records: cy_contact, cy_vec3, cy_direction and the rest, in clunkyard.h.
@@ -238,6 +239,7 @@
   (import "clunkyard" "status_value" (func $cy_status_value (param f64) (result i32)))
   (import "clunkyard" "status_get_text" (func $cy_status_get_text (param i32 i32 i32) (result i32)))
   (import "clunkyard" "status_get_value" (func $cy_status_get_value (param i32) (result i32)))
+  (import "clunkyard" "debug_log" (func $cy_debug_log (param i32 i32) (result i32)))
   (import "clunkyard" "raw_number" (func $cy_raw_number (param i32 i32 i32) (result i32)))
   (import "clunkyard" "raw_text" (func $cy_raw_text (param i32 i32 i32 i32 i32) (result i32)))
   (import "clunkyard" "raw_has" (func $cy_raw_has (param i32 i32 i32) (result i32)))
