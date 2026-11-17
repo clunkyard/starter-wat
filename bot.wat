@@ -34,8 +34,9 @@
 ;; clock: clock_tick clock_seconds clock_remaining_ticks
 ;; arena: arena_size arena_gravity arena_terrain_kind arena_ground_height
 ;; me: me_health me_position me_velocity me_heading me_pitch me_roll
-;;   me_angular_velocity me_attitude me_grounded me_altitude me_applied
-;;   me_hull_mounts me_to_mount me_from_mount me_mount_toward
+;;   me_angular_velocity me_attitude me_grounded me_altitude
+;;   me_wall_contact me_applied me_hull_mounts me_to_mount me_from_mount
+;;   me_mount_toward
 ;; battery: battery_charge battery_capacity battery_regen
 ;;   battery_sustainable_drive battery_compute battery_drive_cost
 ;; drive: drive_hover_lift drive_throttle drive_turn drive_pitch_turn
@@ -61,7 +62,7 @@
 ;; nav: nav_zone nav_zone_margin nav_zone_contains nav_zone_distance_from
 ;;   nav_storm nav_storm_margin nav_storm_contains nav_storm_distance_from
 ;;   nav_hill nav_hill_margin nav_hill_contains nav_hill_distance_from
-;;   nav_pickups nav_nearest_pickup nav_field_distance
+;;   nav_wall_margin nav_pickups nav_nearest_pickup nav_field_distance
 ;; score: score_me score_best score_armour
 ;; angles: angles_normalize angles_angle_diff angles_bearing_to
 ;;   angles_elevation_to angles_direction angles_distance angles_to_chassis
@@ -110,6 +111,7 @@
   (import "clunkyard" "me_attitude_v1" (func $cy_me_attitude (param i32) (result i32)))
   (import "clunkyard" "me_grounded" (func $cy_me_grounded (param i32) (result i32)))
   (import "clunkyard" "me_altitude" (func $cy_me_altitude (param i32) (result i32)))
+  (import "clunkyard" "me_wall_contact" (func $cy_me_wall_contact (param i32) (result i32)))
   (import "clunkyard" "me_applied_v1" (func $cy_me_applied_v1 (param i32) (result i32)))
   (import "clunkyard" "me_applied_v1" (func $cy_me_applied (param i32) (result i32)))
   (import "clunkyard" "me_hull_mounts" (func $cy_me_hull_mounts (param i32) (result i32)))
@@ -216,6 +218,8 @@
   (import "clunkyard" "nav_hill_margin" (func $cy_nav_hill_margin (param i32 i32) (result i32)))
   (import "clunkyard" "nav_hill_contains" (func $cy_nav_hill_contains (param i32 f64 i32) (result i32)))
   (import "clunkyard" "nav_hill_distance_from" (func $cy_nav_hill_distance_from (param i32 i32) (result i32)))
+  (import "clunkyard" "nav_wall_margin_v1" (func $cy_nav_wall_margin_v1 (param i32) (result i32)))
+  (import "clunkyard" "nav_wall_margin_v1" (func $cy_nav_wall_margin (param i32) (result i32)))
   (import "clunkyard" "nav_pickups_v1" (func $cy_nav_pickups_v1 (param i32 i32 i32) (result i32)))
   (import "clunkyard" "nav_pickups_v1" (func $cy_nav_pickups (param i32 i32 i32) (result i32)))
   (import "clunkyard" "nav_nearest_pickup_v1" (func $cy_nav_nearest_pickup_v1 (param i32 i32) (result i32)))
@@ -357,6 +361,14 @@
   (global $CY_SIGHTING_POSITION_X i32 (i32.const 24))
   (global $CY_SIGHTING_POSITION_Y i32 (i32.const 32))
   (global $CY_SIGHTING_POSITION_Z i32 (i32.const 40))
+  (global $CY_WALL_MARGIN_SIZE i32 (i32.const 56))
+  (global $CY_WALL_MARGIN_X i32 (i32.const 0))
+  (global $CY_WALL_MARGIN_Y i32 (i32.const 8))
+  (global $CY_WALL_MARGIN_Z i32 (i32.const 16))
+  (global $CY_WALL_MARGIN_NEAREST i32 (i32.const 24))
+  (global $CY_WALL_MARGIN_NORMAL_X i32 (i32.const 32))
+  (global $CY_WALL_MARGIN_NORMAL_Y i32 (i32.const 40))
+  (global $CY_WALL_MARGIN_NORMAL_Z i32 (i32.const 48))
   (global $CY_SOLUTION_SIZE i32 (i32.const 24))
   (global $CY_SOLUTION_HEADING i32 (i32.const 0))
   (global $CY_SOLUTION_PITCH i32 (i32.const 8))
