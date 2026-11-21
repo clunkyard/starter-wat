@@ -35,8 +35,8 @@
 ;; arena: arena_size arena_gravity arena_terrain_kind arena_ground_height
 ;; me: me_health me_position me_velocity me_heading me_pitch me_roll
 ;;   me_angular_velocity me_attitude me_grounded me_altitude
-;;   me_wall_contact me_applied me_hull_mounts me_to_mount me_from_mount
-;;   me_mount_toward
+;;   me_wall_contact me_hurt me_applied me_hull_mounts me_to_mount
+;;   me_from_mount me_mount_toward
 ;; battery: battery_charge battery_capacity battery_regen
 ;;   battery_sustainable_drive battery_compute battery_drive_cost
 ;; drive: drive_hover_lift drive_throttle drive_turn drive_pitch_turn
@@ -64,6 +64,10 @@
 ;;   nav_hill nav_hill_margin nav_hill_contains nav_hill_distance_from
 ;;   nav_wall_margin nav_pickups nav_nearest_pickup nav_field_distance
 ;; score: score_me score_best score_armour
+;; drone: drone_has drone_ready drone_in_flight drone_launches_left
+;;   drone_report drone_sightings drone_launch drone_launch_heading
+;;   drone_launch_pitch drone_launch_param drone_brief drone_get_launch
+;;   drone_get_launch_heading drone_get_launch_pitch drone_get_launch_param
 ;; angles: angles_normalize angles_angle_diff angles_bearing_to
 ;;   angles_elevation_to angles_direction angles_distance angles_to_chassis
 ;;   angles_from_chassis angles_clamp
@@ -112,6 +116,8 @@
   (import "clunkyard" "me_grounded" (func $cy_me_grounded (param i32) (result i32)))
   (import "clunkyard" "me_altitude" (func $cy_me_altitude (param i32) (result i32)))
   (import "clunkyard" "me_wall_contact" (func $cy_me_wall_contact (param i32) (result i32)))
+  (import "clunkyard" "me_hurt_v1" (func $cy_me_hurt_v1 (param i32) (result i32)))
+  (import "clunkyard" "me_hurt_v1" (func $cy_me_hurt (param i32) (result i32)))
   (import "clunkyard" "me_applied_v1" (func $cy_me_applied_v1 (param i32) (result i32)))
   (import "clunkyard" "me_applied_v1" (func $cy_me_applied (param i32) (result i32)))
   (import "clunkyard" "me_hull_mounts" (func $cy_me_hull_mounts (param i32) (result i32)))
@@ -228,6 +234,23 @@
   (import "clunkyard" "score_me" (func $cy_score_me (param i32) (result i32)))
   (import "clunkyard" "score_best" (func $cy_score_best (param i32) (result i32)))
   (import "clunkyard" "score_armour" (func $cy_score_armour (param i32) (result i32)))
+  (import "clunkyard" "drone_has" (func $cy_drone_has (param i32) (result i32)))
+  (import "clunkyard" "drone_ready" (func $cy_drone_ready (param i32) (result i32)))
+  (import "clunkyard" "drone_in_flight" (func $cy_drone_in_flight (param i32) (result i32)))
+  (import "clunkyard" "drone_launches_left" (func $cy_drone_launches_left (param i32) (result i32)))
+  (import "clunkyard" "drone_report_v1" (func $cy_drone_report_v1 (param i32) (result i32)))
+  (import "clunkyard" "drone_report_v1" (func $cy_drone_report (param i32) (result i32)))
+  (import "clunkyard" "drone_sightings_v1" (func $cy_drone_sightings_v1 (param i32 i32 i32) (result i32)))
+  (import "clunkyard" "drone_sightings_v1" (func $cy_drone_sightings (param i32 i32 i32) (result i32)))
+  (import "clunkyard" "drone_launch" (func $cy_drone_launch (result i32)))
+  (import "clunkyard" "drone_launch_heading" (func $cy_drone_launch_heading (param f64) (result i32)))
+  (import "clunkyard" "drone_launch_pitch" (func $cy_drone_launch_pitch (param f64) (result i32)))
+  (import "clunkyard" "drone_launch_param" (func $cy_drone_launch_param (param f64) (result i32)))
+  (import "clunkyard" "drone_brief" (func $cy_drone_brief (param i32 f64) (result i32)))
+  (import "clunkyard" "drone_get_launch" (func $cy_drone_get_launch (param i32) (result i32)))
+  (import "clunkyard" "drone_get_launch_heading" (func $cy_drone_get_launch_heading (param i32) (result i32)))
+  (import "clunkyard" "drone_get_launch_pitch" (func $cy_drone_get_launch_pitch (param i32) (result i32)))
+  (import "clunkyard" "drone_get_launch_param" (func $cy_drone_get_launch_param (param i32) (result i32)))
   (import "clunkyard" "angles_normalize" (func $cy_angles_normalize (param f64 i32) (result i32)))
   (import "clunkyard" "angles_angle_diff" (func $cy_angles_angle_diff (param f64 f64 i32) (result i32)))
   (import "clunkyard" "angles_bearing_to" (func $cy_angles_bearing_to (param i32 i32 i32) (result i32)))
@@ -270,6 +293,8 @@
   (global $CY_SOURCE_MUZZLE i32 (i32.const 5))
   (global $CY_SOURCE_MOTION i32 (i32.const 6))
   (global $CY_SOURCE_PING i32 (i32.const 7))
+  (global $CY_SOURCE_LAUNCH i32 (i32.const 8))
+  (global $CY_SOURCE_DRONE i32 (i32.const 9))
   (global $CY_MODE_NONE i32 (i32.const 0))
   (global $CY_MODE_TWO_D i32 (i32.const 1))
   (global $CY_MODE_THREE_D i32 (i32.const 2))
@@ -301,6 +326,13 @@
   (global $CY_EVENT_HELLO i32 (i32.const 1))
   (global $CY_EVENT_STATE i32 (i32.const 2))
   (global $CY_EVENT_END i32 (i32.const 3))
+  (global $CY_REPORT_STATE_NONE i32 (i32.const 0))
+  (global $CY_REPORT_STATE_FLYING i32 (i32.const 1))
+  (global $CY_REPORT_STATE_LOST i32 (i32.const 2))
+  (global $CY_REPORT_STATE_ENDED i32 (i32.const 3))
+  (global $CY_SIGHTING_KIND_NONE i32 (i32.const 0))
+  (global $CY_SIGHTING_KIND_ROBOT i32 (i32.const 1))
+  (global $CY_SIGHTING_KIND_DRONE i32 (i32.const 2))
   (global $CY_VEC3_SIZE i32 (i32.const 24))
   (global $CY_VEC3_X i32 (i32.const 0))
   (global $CY_VEC3_Y i32 (i32.const 8))
@@ -330,6 +362,11 @@
   (global $CY_APPLIED_TORQUE_PITCH i32 (i32.const 32))
   (global $CY_APPLIED_TORQUE_ROLL i32 (i32.const 40))
   (global $CY_APPLIED_BRAKE i32 (i32.const 48))
+  (global $CY_HURT_SIZE i32 (i32.const 32))
+  (global $CY_HURT_SHOT i32 (i32.const 0))
+  (global $CY_HURT_BURST i32 (i32.const 8))
+  (global $CY_HURT_COLLISION i32 (i32.const 16))
+  (global $CY_HURT_BOUNDARY i32 (i32.const 24))
   (global $CY_SCAN_SIZE i32 (i32.const 32))
   (global $CY_SCAN_HEADING i32 (i32.const 0))
   (global $CY_SCAN_PITCH i32 (i32.const 8))
@@ -412,6 +449,29 @@
   (global $CY_PICKUP_POSITION_X i32 (i32.const 16))
   (global $CY_PICKUP_POSITION_Y i32 (i32.const 24))
   (global $CY_PICKUP_POSITION_Z i32 (i32.const 32))
+  (global $CY_REPORT_SIZE i32 (i32.const 72))
+  (global $CY_REPORT_STATE i32 (i32.const 0))
+  (global $CY_REPORT_TICK i32 (i32.const 4))
+  (global $CY_REPORT_FLARES i32 (i32.const 8))
+  (global $CY_REPORT_RESERVED i32 (i32.const 12))
+  (global $CY_REPORT_AGE i32 (i32.const 16))
+  (global $CY_REPORT_SAY i32 (i32.const 24))
+  (global $CY_REPORT_HEADING i32 (i32.const 32))
+  (global $CY_REPORT_PITCH i32 (i32.const 40))
+  (global $CY_REPORT_POSITION_X i32 (i32.const 48))
+  (global $CY_REPORT_POSITION_Y i32 (i32.const 56))
+  (global $CY_REPORT_POSITION_Z i32 (i32.const 64))
+  (global $CY_DRONE_SIGHTING_SIZE i32 (i32.const 72))
+  (global $CY_DRONE_SIGHTING_KIND i32 (i32.const 0))
+  (global $CY_DRONE_SIGHTING_TICK i32 (i32.const 4))
+  (global $CY_DRONE_SIGHTING_RANGE i32 (i32.const 8))
+  (global $CY_DRONE_SIGHTING_BEARING i32 (i32.const 16))
+  (global $CY_DRONE_SIGHTING_ELEVATION i32 (i32.const 24))
+  (global $CY_DRONE_SIGHTING_BEARING_ERROR i32 (i32.const 32))
+  (global $CY_DRONE_SIGHTING_RANGE_ERROR i32 (i32.const 40))
+  (global $CY_DRONE_SIGHTING_POSITION_X i32 (i32.const 48))
+  (global $CY_DRONE_SIGHTING_POSITION_Y i32 (i32.const 56))
+  (global $CY_DRONE_SIGHTING_POSITION_Z i32 (i32.const 64))
   (global $CY_COMPUTE_SIZE i32 (i32.const 16))
   (global $CY_COMPUTE_K i32 (i32.const 0))
   (global $CY_COMPUTE_QUANTA i32 (i32.const 8))
